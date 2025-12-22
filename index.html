@@ -1,0 +1,1182 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ShapeDraw Pro - Advanced Drawing Tool</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        }
+
+        :root {
+            --dark-green: #0a2a1e;
+            --medium-green: #1a3a2e;
+            --light-green: #2a4a3e;
+            --deep-orange: #ff6b35;
+            --light-orange: #ff9e6d;
+            --white: #f5f5f5;
+            --gray: #a0a0a0;
+            --canvas-bg: #ffffff;
+        }
+
+        body {
+            background-color: var(--dark-green);
+            color: var(--white);
+            min-height: 100vh;
+            overflow-x: hidden;
+        }
+
+        .header {
+            background-color: var(--medium-green);
+            padding: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 2px solid var(--deep-orange);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+        }
+
+        .back-button {
+            background-color: var(--dark-green);
+            color: var(--white);
+            border: none;
+            padding: 0.7rem 1.5rem;
+            border-radius: 30px;
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            transition: all 0.3s ease;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.2);
+        }
+
+        .back-button:hover {
+            background-color: var(--deep-orange);
+            transform: translateY(-2px);
+        }
+
+        .logo {
+            display: flex;
+            align-items: center;
+            gap: 0.8rem;
+        }
+
+        .logo i {
+            color: var(--deep-orange);
+            font-size: 1.8rem;
+        }
+
+        .logo h1 {
+            font-size: 1.5rem;
+            font-weight: 700;
+            background: linear-gradient(to right, var(--deep-orange), var(--light-orange));
+            -webkit-background-clip: text;
+            background-clip: text;
+            color: transparent;
+        }
+
+        .container {
+            display: flex;
+            flex-wrap: wrap;
+            padding: 1.5rem;
+            gap: 1.5rem;
+            min-height: calc(100vh - 120px);
+        }
+
+        .sidebar {
+            background-color: var(--medium-green);
+            border-radius: 12px;
+            padding: 1.5rem;
+            width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        }
+
+        .main-content {
+            flex: 1;
+            min-width: 300px;
+            display: flex;
+            flex-direction: column;
+            gap: 1.5rem;
+        }
+
+        .section-title {
+            font-size: 1.1rem;
+            color: var(--light-orange);
+            margin-bottom: 0.8rem;
+            padding-bottom: 0.5rem;
+            border-bottom: 1px solid var(--light-green);
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        .tool-options, .shape-options, .edit-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin-bottom: 0.5rem;
+        }
+
+        .tool-button {
+            background-color: var(--light-green);
+            border: none;
+            color: var(--white);
+            padding: 0.7rem;
+            border-radius: 8px;
+            cursor: pointer;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            gap: 0.3rem;
+            transition: all 0.2s ease;
+            flex: 1;
+            min-width: 70px;
+        }
+
+        .tool-button:hover {
+            background-color: var(--deep-orange);
+            transform: translateY(-3px);
+        }
+
+        .tool-button.active {
+            background-color: var(--deep-orange);
+            box-shadow: 0 4px 8px rgba(255, 107, 53, 0.3);
+        }
+
+        .tool-button i {
+            font-size: 1.2rem;
+        }
+
+        .tool-button span {
+            font-size: 0.8rem;
+        }
+
+        .color-picker {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+        }
+
+        .color-option {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            cursor: pointer;
+            border: 2px solid transparent;
+            transition: all 0.2s ease;
+        }
+
+        .color-option:hover {
+            transform: scale(1.1);
+        }
+
+        .color-option.selected {
+            border-color: var(--white);
+            box-shadow: 0 0 8px rgba(255, 255, 255, 0.5);
+        }
+
+        .brush-size {
+            margin-bottom: 1rem;
+        }
+
+        .brush-size input {
+            width: 100%;
+            margin-top: 0.5rem;
+        }
+
+        .canvas-container {
+            background-color: var(--medium-green);
+            border-radius: 12px;
+            padding: 1.5rem;
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+            overflow: hidden;
+        }
+
+        .canvas-wrapper {
+            background-color: var(--canvas-bg);
+            border-radius: 8px;
+            flex: 1;
+            overflow: hidden;
+            position: relative;
+            box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
+        }
+
+        #drawingCanvas {
+            display: block;
+            cursor: crosshair;
+            width: 100%;
+            height: 100%;
+        }
+
+        .suggestion-panel {
+            background-color: var(--light-green);
+            border-radius: 8px;
+            padding: 1rem;
+            margin-top: 1rem;
+            display: none;
+        }
+
+        .suggestion-panel h3 {
+            color: var(--light-orange);
+            margin-bottom: 0.8rem;
+            font-size: 1rem;
+        }
+
+        .suggestion-options {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+        }
+
+        .suggestion-btn {
+            background-color: var(--medium-green);
+            border: 1px solid var(--deep-orange);
+            color: var(--white);
+            padding: 0.6rem 1rem;
+            border-radius: 20px;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+
+        .suggestion-btn:hover {
+            background-color: var(--deep-orange);
+        }
+
+        .shape {
+            position: absolute;
+            cursor: move;
+            user-select: none;
+        }
+
+        .shape.selected {
+            outline: 2px dashed var(--deep-orange);
+        }
+
+        .footer {
+            background-color: var(--medium-green);
+            padding: 1rem;
+            text-align: center;
+            border-top: 2px solid var(--deep-orange);
+            margin-top: 2rem;
+            font-size: 0.9rem;
+            color: var(--gray);
+        }
+
+        @media (max-width: 768px) {
+            .container {
+                flex-direction: column;
+            }
+            
+            .sidebar {
+                width: 100%;
+            }
+            
+            .logo h1 {
+                font-size: 1.3rem;
+            }
+        }
+
+        /* Toast notification */
+        .toast {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background-color: var(--deep-orange);
+            color: var(--white);
+            padding: 1rem 1.5rem;
+            border-radius: 8px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+            z-index: 1000;
+            display: none;
+            animation: slideIn 0.3s ease;
+        }
+
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <a href="https://hencheng2.github.io/all/" target="_blank">
+            <button class="back-button">
+                <i class="fas fa-arrow-left"></i> Back to Portfolio
+            </button>
+        </a>
+        <div class="logo">
+            <i class="fas fa-draw-polygon"></i>
+            <h1>ShapeDraw Pro</h1>
+        </div>
+        <div></div> <!-- Empty div for spacing -->
+    </div>
+
+    <div class="container">
+        <!-- Left Sidebar with Tools -->
+        <div class="sidebar">
+            <!-- Drawing Tools -->
+            <div>
+                <h3 class="section-title"><i class="fas fa-pencil-alt"></i> Drawing Tools</h3>
+                <div class="tool-options">
+                    <button class="tool-button active" id="freehandTool">
+                        <i class="fas fa-hand-paper"></i>
+                        <span>Freehand</span>
+                    </button>
+                    <button class="tool-button" id="shapeTool">
+                        <i class="fas fa-shapes"></i>
+                        <span>Shapes</span>
+                    </button>
+                    <button class="tool-button" id="selectTool">
+                        <i class="fas fa-mouse-pointer"></i>
+                        <span>Select</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Color Palette -->
+            <div>
+                <h3 class="section-title"><i class="fas fa-palette"></i> Colors</h3>
+                <div class="color-picker">
+                    <div class="color-option selected" style="background-color: #000000;" data-color="#000000"></div>
+                    <div class="color-option" style="background-color: #ff6b35;" data-color="#ff6b35"></div>
+                    <div class="color-option" style="background-color: #2a9d8f;" data-color="#2a9d8f"></div>
+                    <div class="color-option" style="background-color: #e9c46a;" data-color="#e9c46a"></div>
+                    <div class="color-option" style="background-color: #264653;" data-color="#264653"></div>
+                    <div class="color-option" style="background-color: #e76f51;" data-color="#e76f51"></div>
+                    <div class="color-option" style="background-color: #2a9d8f;" data-color="#2a9d8f"></div>
+                    <div class="color-option" style="background-color: #8ac926;" data-color="#8ac926"></div>
+                </div>
+            </div>
+
+            <!-- Brush Size -->
+            <div>
+                <h3 class="section-title"><i class="fas fa-brush"></i> Brush Size</h3>
+                <div class="brush-size">
+                    <input type="range" id="brushSize" min="1" max="30" value="5">
+                    <div id="brushSizeValue">Size: 5px</div>
+                </div>
+            </div>
+
+            <!-- Shape Library -->
+            <div>
+                <h3 class="section-title"><i class="fas fa-shapes"></i> Shape Library</h3>
+                <div class="shape-options">
+                    <button class="tool-button shape-btn" data-shape="rectangle">
+                        <i class="far fa-square"></i>
+                        <span>Rectangle</span>
+                    </button>
+                    <button class="tool-button shape-btn" data-shape="circle">
+                        <i class="far fa-circle"></i>
+                        <span>Circle</span>
+                    </button>
+                    <button class="tool-button shape-btn" data-shape="triangle">
+                        <i class="fas fa-play"></i>
+                        <span>Triangle</span>
+                    </button>
+                    <button class="tool-button shape-btn" data-shape="line">
+                        <i class="fas fa-minus"></i>
+                        <span>Line</span>
+                    </button>
+                    <button class="tool-button shape-btn" data-shape="star">
+                        <i class="fas fa-star"></i>
+                        <span>Star</span>
+                    </button>
+                    <button class="tool-button shape-btn" data-shape="arrow">
+                        <i class="fas fa-arrow-right"></i>
+                        <span>Arrow</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Edit Tools -->
+            <div>
+                <h3 class="section-title"><i class="fas fa-edit"></i> Edit Tools</h3>
+                <div class="edit-options">
+                    <button class="tool-button" id="undoBtn">
+                        <i class="fas fa-undo"></i>
+                        <span>Undo</span>
+                    </button>
+                    <button class="tool-button" id="redoBtn">
+                        <i class="fas fa-redo"></i>
+                        <span>Redo</span>
+                    </button>
+                    <button class="tool-button" id="mergeBtn">
+                        <i class="fas fa-link"></i>
+                        <span>Merge</span>
+                    </button>
+                    <button class="tool-button" id="deleteBtn">
+                        <i class="fas fa-trash"></i>
+                        <span>Delete</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Download Options -->
+            <div>
+                <h3 class="section-title"><i class="fas fa-download"></i> Export</h3>
+                <div class="edit-options">
+                    <button class="tool-button" id="downloadImage">
+                        <i class="fas fa-file-image"></i>
+                        <span>PNG Image</span>
+                    </button>
+                    <button class="tool-button" id="downloadPDF">
+                        <i class="fas fa-file-pdf"></i>
+                        <span>PDF</span>
+                    </button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Main Canvas Area -->
+        <div class="main-content">
+            <div class="canvas-container">
+                <div class="canvas-wrapper">
+                    <canvas id="drawingCanvas"></canvas>
+                </div>
+                
+                <!-- Shape suggestion panel -->
+                <div class="suggestion-panel" id="suggestionPanel">
+                    <h3><i class="fas fa-lightbulb"></i> Shape Suggestions</h3>
+                    <div class="suggestion-options">
+                        <button class="suggestion-btn" data-perfect-shape="circle">Perfect Circle</button>
+                        <button class="suggestion-btn" data-perfect-shape="square">Perfect Square</button>
+                        <button class="suggestion-btn" data-perfect-shape="triangle">Equilateral Triangle</button>
+                        <button class="suggestion-btn" data-perfect-shape="line">Straight Line</button>
+                        <button class="suggestion-btn" id="cancelSuggestion">Keep Original</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>ShapeDraw Pro - Advanced Drawing & Shape Design Tool | Made with <i class="fas fa-heart" style="color: var(--deep-orange);"></i></p>
+    </div>
+
+    <!-- Toast notification -->
+    <div class="toast" id="toast"></div>
+
+    <script>
+        // DOM Elements
+        const canvas = document.getElementById('drawingCanvas');
+        const ctx = canvas.getContext('2d');
+        const suggestionPanel = document.getElementById('suggestionPanel');
+        const toast = document.getElementById('toast');
+        
+        // Tool buttons
+        const freehandTool = document.getElementById('freehandTool');
+        const shapeTool = document.getElementById('shapeTool');
+        const selectTool = document.getElementById('selectTool');
+        
+        // Color options
+        const colorOptions = document.querySelectorAll('.color-option');
+        
+        // Brush size
+        const brushSizeInput = document.getElementById('brushSize');
+        const brushSizeValue = document.getElementById('brushSizeValue');
+        
+        // Shape buttons
+        const shapeButtons = document.querySelectorAll('.shape-btn');
+        
+        // Edit buttons
+        const undoBtn = document.getElementById('undoBtn');
+        const redoBtn = document.getElementById('redoBtn');
+        const mergeBtn = document.getElementById('mergeBtn');
+        const deleteBtn = document.getElementById('deleteBtn');
+        
+        // Download buttons
+        const downloadImageBtn = document.getElementById('downloadImage');
+        const downloadPDFBtn = document.getElementById('downloadPDF');
+        
+        // Suggestion buttons
+        const suggestionButtons = document.querySelectorAll('.suggestion-btn');
+        const cancelSuggestionBtn = document.getElementById('cancelSuggestion');
+        
+        // Application state
+        let currentTool = 'freehand';
+        let currentColor = '#000000';
+        let currentBrushSize = 5;
+        let isDrawing = false;
+        let lastX = 0;
+        let lastY = 0;
+        let shapes = [];
+        let selectedShapes = [];
+        let history = [];
+        let redoStack = [];
+        let currentPath = [];
+        let currentShapeType = null;
+        let isCreatingShape = false;
+        let shapeStartX = 0;
+        let shapeStartY = 0;
+        let selectedShapeIndex = -1;
+        
+        // Set canvas size
+        function resizeCanvas() {
+            const container = canvas.parentElement;
+            canvas.width = container.clientWidth;
+            canvas.height = container.clientHeight;
+            redrawCanvas();
+        }
+        
+        // Initialize the app
+        function init() {
+            resizeCanvas();
+            window.addEventListener('resize', resizeCanvas);
+            
+            // Set initial canvas background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Add event listeners
+            setupEventListeners();
+            
+            // Show welcome message
+            showToast('Welcome to ShapeDraw Pro! Start drawing or add shapes.');
+        }
+        
+        // Set up all event listeners
+        function setupEventListeners() {
+            // Tool selection
+            freehandTool.addEventListener('click', () => setTool('freehand'));
+            shapeTool.addEventListener('click', () => setTool('shape'));
+            selectTool.addEventListener('click', () => setTool('select'));
+            
+            // Color selection
+            colorOptions.forEach(option => {
+                option.addEventListener('click', () => {
+                    colorOptions.forEach(opt => opt.classList.remove('selected'));
+                    option.classList.add('selected');
+                    currentColor = option.getAttribute('data-color');
+                });
+            });
+            
+            // Brush size
+            brushSizeInput.addEventListener('input', () => {
+                currentBrushSize = parseInt(brushSizeInput.value);
+                brushSizeValue.textContent = `Size: ${currentBrushSize}px`;
+            });
+            
+            // Shape selection
+            shapeButtons.forEach(button => {
+                button.addEventListener('click', () => {
+                    currentShapeType = button.getAttribute('data-shape');
+                    setTool('shape');
+                    showToast(`Selected ${currentShapeType} tool. Click and drag to draw.`);
+                });
+            });
+            
+            // Edit tools
+            undoBtn.addEventListener('click', undo);
+            redoBtn.addEventListener('click', redo);
+            mergeBtn.addEventListener('click', mergeShapes);
+            deleteBtn.addEventListener('click', deleteSelected);
+            
+            // Download tools
+            downloadImageBtn.addEventListener('click', downloadAsImage);
+            downloadPDFBtn.addEventListener('click', downloadAsPDF);
+            
+            // Suggestion buttons
+            suggestionButtons.forEach(button => {
+                if (button.id !== 'cancelSuggestion') {
+                    button.addEventListener('click', () => {
+                        applyPerfectShape(button.getAttribute('data-perfect-shape'));
+                    });
+                }
+            });
+            
+            cancelSuggestionBtn.addEventListener('click', hideSuggestionPanel);
+            
+            // Canvas events
+            canvas.addEventListener('mousedown', startDrawing);
+            canvas.addEventListener('mousemove', draw);
+            canvas.addEventListener('mouseup', stopDrawing);
+            canvas.addEventListener('mouseout', stopDrawing);
+            
+            // Touch events for mobile
+            canvas.addEventListener('touchstart', handleTouchStart);
+            canvas.addEventListener('touchmove', handleTouchMove);
+            canvas.addEventListener('touchend', handleTouchEnd);
+        }
+        
+        // Set the current tool
+        function setTool(tool) {
+            currentTool = tool;
+            
+            // Update active button
+            freehandTool.classList.toggle('active', tool === 'freehand');
+            shapeTool.classList.toggle('active', tool === 'shape');
+            selectTool.classList.toggle('active', tool === 'select');
+            
+            // Update cursor
+            if (tool === 'select') {
+                canvas.style.cursor = 'default';
+            } else {
+                canvas.style.cursor = 'crosshair';
+            }
+        }
+        
+        // Start drawing
+        function startDrawing(e) {
+            e.preventDefault();
+            const { x, y } = getCanvasCoordinates(e);
+            
+            if (currentTool === 'freehand') {
+                isDrawing = true;
+                [lastX, lastY] = [x, y];
+                currentPath = [{x, y}];
+            } 
+            else if (currentTool === 'shape' && currentShapeType) {
+                isCreatingShape = true;
+                shapeStartX = x;
+                shapeStartY = y;
+            }
+            else if (currentTool === 'select') {
+                // Check if clicked on a shape
+                selectedShapeIndex = -1;
+                for (let i = shapes.length - 1; i >= 0; i--) {
+                    if (isPointInShape(x, y, shapes[i])) {
+                        selectedShapeIndex = i;
+                        
+                        // Toggle selection
+                        if (e.shiftKey || e.ctrlKey) {
+                            // Multi-select
+                            const index = selectedShapes.indexOf(i);
+                            if (index === -1) {
+                                selectedShapes.push(i);
+                            } else {
+                                selectedShapes.splice(index, 1);
+                            }
+                        } else {
+                            // Single select
+                            selectedShapes = [i];
+                        }
+                        
+                        redrawCanvas();
+                        return;
+                    }
+                }
+                
+                // If clicked on empty space, clear selection
+                if (!e.shiftKey && !e.ctrlKey) {
+                    selectedShapes = [];
+                    redrawCanvas();
+                }
+            }
+        }
+        
+        // Draw on canvas
+        function draw(e) {
+            e.preventDefault();
+            if (!isDrawing && !isCreatingShape) return;
+            
+            const { x, y } = getCanvasCoordinates(e);
+            
+            if (currentTool === 'freehand' && isDrawing) {
+                ctx.beginPath();
+                ctx.moveTo(lastX, lastY);
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = currentBrushSize;
+                ctx.lineCap = 'round';
+                ctx.stroke();
+                
+                [lastX, lastY] = [x, y];
+                currentPath.push({x, y});
+            }
+            else if (currentTool === 'shape' && isCreatingShape) {
+                // Redraw canvas with temporary shape
+                redrawCanvas();
+                
+                // Draw the temporary shape
+                ctx.save();
+                drawShape(ctx, shapeStartX, shapeStartY, x, y, currentShapeType, currentColor, currentBrushSize, true);
+                ctx.restore();
+            }
+        }
+        
+        // Stop drawing
+        function stopDrawing(e) {
+            e.preventDefault();
+            
+            if (currentTool === 'freehand' && isDrawing) {
+                isDrawing = false;
+                
+                // Save the freehand drawing as a shape
+                if (currentPath.length > 1) {
+                    saveToHistory();
+                    
+                    const bounds = getPathBounds(currentPath);
+                    shapes.push({
+                        type: 'freehand',
+                        path: [...currentPath],
+                        color: currentColor,
+                        brushSize: currentBrushSize,
+                        x: bounds.x,
+                        y: bounds.y,
+                        width: bounds.width,
+                        height: bounds.height,
+                        id: Date.now()
+                    });
+                    
+                    // Show suggestion panel for freehand drawings
+                    showSuggestionPanel(bounds);
+                }
+                
+                currentPath = [];
+            }
+            else if (currentTool === 'shape' && isCreatingShape) {
+                const { x, y } = getCanvasCoordinates(e);
+                isCreatingShape = false;
+                
+                saveToHistory();
+                
+                // Create the shape object
+                shapes.push({
+                    type: currentShapeType,
+                    x: Math.min(shapeStartX, x),
+                    y: Math.min(shapeStartY, y),
+                    width: Math.abs(x - shapeStartX),
+                    height: Math.abs(y - shapeStartY),
+                    color: currentColor,
+                    brushSize: currentBrushSize,
+                    id: Date.now()
+                });
+                
+                redrawCanvas();
+            }
+        }
+        
+        // Touch event handlers for mobile
+        function handleTouchStart(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousedown', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(mouseEvent);
+        }
+        
+        function handleTouchMove(e) {
+            e.preventDefault();
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousemove', {
+                clientX: touch.clientX,
+                clientY: touch.clientY
+            });
+            canvas.dispatchEvent(mouseEvent);
+        }
+        
+        function handleTouchEnd(e) {
+            e.preventDefault();
+            const mouseEvent = new MouseEvent('mouseup', {});
+            canvas.dispatchEvent(mouseEvent);
+        }
+        
+        // Get canvas coordinates from event
+        function getCanvasCoordinates(e) {
+            const rect = canvas.getBoundingClientRect();
+            let x, y;
+            
+            if (e.touches) {
+                x = e.touches[0].clientX - rect.left;
+                y = e.touches[0].clientY - rect.top;
+            } else {
+                x = e.clientX - rect.left;
+                y = e.clientY - rect.top;
+            }
+            
+            return { x, y };
+        }
+        
+        // Draw a shape on canvas
+        function drawShape(context, x1, y1, x2, y2, type, color, brushSize, isPreview = false) {
+            const x = Math.min(x1, x2);
+            const y = Math.min(y1, y2);
+            const width = Math.abs(x2 - x1);
+            const height = Math.abs(y2 - y1);
+            
+            context.strokeStyle = color;
+            context.lineWidth = brushSize;
+            context.fillStyle = color + (isPreview ? '40' : '20'); // Add transparency for preview
+            
+            switch(type) {
+                case 'rectangle':
+                    context.fillRect(x, y, width, height);
+                    context.strokeRect(x, y, width, height);
+                    break;
+                case 'circle':
+                    const centerX = x + width / 2;
+                    const centerY = y + height / 2;
+                    const radius = Math.min(width, height) / 2;
+                    context.beginPath();
+                    context.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                    context.fill();
+                    context.stroke();
+                    break;
+                case 'triangle':
+                    context.beginPath();
+                    context.moveTo(x + width / 2, y);
+                    context.lineTo(x, y + height);
+                    context.lineTo(x + width, y + height);
+                    context.closePath();
+                    context.fill();
+                    context.stroke();
+                    break;
+                case 'line':
+                    context.beginPath();
+                    context.moveTo(x1, y1);
+                    context.lineTo(x2, y2);
+                    context.stroke();
+                    break;
+                case 'star':
+                    drawStar(context, x + width / 2, y + height / 2, Math.min(width, height) / 2, 5, color, brushSize, isPreview);
+                    break;
+                case 'arrow':
+                    drawArrow(context, x1, y1, x2, y2, color, brushSize, isPreview);
+                    break;
+                case 'freehand':
+                    if (isPreview) {
+                        context.beginPath();
+                        context.moveTo(x1, y1);
+                        for (let i = 1; i < currentPath.length; i++) {
+                            context.lineTo(currentPath[i].x, currentPath[i].y);
+                        }
+                        context.stroke();
+                    }
+                    break;
+            }
+        }
+        
+        // Draw a star shape
+        function drawStar(context, cx, cy, radius, points, color, brushSize, isPreview) {
+            const outerRadius = radius;
+            const innerRadius = radius / 2;
+            
+            context.beginPath();
+            
+            for (let i = 0; i < points * 2; i++) {
+                const radius = i % 2 === 0 ? outerRadius : innerRadius;
+                const angle = (Math.PI / points) * i;
+                const x = cx + Math.cos(angle) * radius;
+                const y = cy + Math.sin(angle) * radius;
+                
+                if (i === 0) {
+                    context.moveTo(x, y);
+                } else {
+                    context.lineTo(x, y);
+                }
+            }
+            
+            context.closePath();
+            context.fillStyle = color + (isPreview ? '40' : '20');
+            context.fill();
+            context.stroke();
+        }
+        
+        // Draw an arrow
+        function drawArrow(context, fromX, fromY, toX, toY, color, brushSize, isPreview) {
+            const headLength = 15;
+            const angle = Math.atan2(toY - fromY, toX - fromX);
+            
+            // Draw the line
+            context.beginPath();
+            context.moveTo(fromX, fromY);
+            context.lineTo(toX, toY);
+            context.strokeStyle = color;
+            context.lineWidth = brushSize;
+            context.stroke();
+            
+            // Draw the arrowhead
+            context.beginPath();
+            context.moveTo(toX, toY);
+            context.lineTo(
+                toX - headLength * Math.cos(angle - Math.PI / 6),
+                toY - headLength * Math.sin(angle - Math.PI / 6)
+            );
+            context.lineTo(
+                toX - headLength * Math.cos(angle + Math.PI / 6),
+                toY - headLength * Math.sin(angle + Math.PI / 6)
+            );
+            context.closePath();
+            context.fillStyle = color;
+            context.fill();
+        }
+        
+        // Redraw the entire canvas
+        function redrawCanvas() {
+            // Clear canvas with white background
+            ctx.fillStyle = '#ffffff';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+            
+            // Draw all shapes
+            shapes.forEach((shape, index) => {
+                ctx.save();
+                
+                // Highlight selected shapes
+                if (selectedShapes.includes(index)) {
+                    ctx.strokeStyle = '#ff6b35';
+                    ctx.lineWidth = 2;
+                    ctx.setLineDash([5, 5]);
+                    ctx.strokeRect(shape.x - 5, shape.y - 5, shape.width + 10, shape.height + 10);
+                    ctx.setLineDash([]);
+                }
+                
+                // Draw the shape
+                if (shape.type === 'freehand') {
+                    ctx.strokeStyle = shape.color;
+                    ctx.lineWidth = shape.brushSize;
+                    ctx.lineCap = 'round';
+                    
+                    ctx.beginPath();
+                    ctx.moveTo(shape.path[0].x, shape.path[0].y);
+                    for (let i = 1; i < shape.path.length; i++) {
+                        ctx.lineTo(shape.path[i].x, shape.path[i].y);
+                    }
+                    ctx.stroke();
+                } else {
+                    drawShape(
+                        ctx, 
+                        shape.x, 
+                        shape.y, 
+                        shape.x + shape.width, 
+                        shape.y + shape.height, 
+                        shape.type, 
+                        shape.color, 
+                        shape.brushSize
+                    );
+                }
+                
+                ctx.restore();
+            });
+        }
+        
+        // Check if a point is inside a shape
+        function isPointInShape(x, y, shape) {
+            if (shape.type === 'freehand') {
+                // Simple bounding box check for freehand shapes
+                return x >= shape.x && x <= shape.x + shape.width && 
+                       y >= shape.y && y <= shape.y + shape.height;
+            } else {
+                // Bounding box check for regular shapes
+                return x >= shape.x && x <= shape.x + shape.width && 
+                       y >= shape.y && y <= shape.y + shape.height;
+            }
+        }
+        
+        // Get bounds of a path
+        function getPathBounds(path) {
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            path.forEach(point => {
+                minX = Math.min(minX, point.x);
+                minY = Math.min(minY, point.y);
+                maxX = Math.max(maxX, point.x);
+                maxY = Math.max(maxY, point.y);
+            });
+            
+            return {
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY
+            };
+        }
+        
+        // Show suggestion panel
+        function showSuggestionPanel(bounds) {
+            // Only show for drawings that could be shapes
+            const aspectRatio = bounds.width / bounds.height;
+            if (aspectRatio > 0.7 && aspectRatio < 1.3 && bounds.width > 30 && bounds.height > 30) {
+                suggestionPanel.style.display = 'block';
+                showToast('Try perfecting your drawing with shape suggestions!');
+            }
+        }
+        
+        // Hide suggestion panel
+        function hideSuggestionPanel() {
+            suggestionPanel.style.display = 'none';
+        }
+        
+        // Apply perfect shape
+        function applyPerfectShape(shapeType) {
+            if (shapes.length === 0) return;
+            
+            const lastShapeIndex = shapes.length - 1;
+            const lastShape = shapes[lastShapeIndex];
+            
+            if (lastShape.type !== 'freehand') return;
+            
+            saveToHistory();
+            
+            // Replace the freehand shape with a perfect shape
+            shapes[lastShapeIndex] = {
+                type: shapeType,
+                x: lastShape.x,
+                y: lastShape.y,
+                width: lastShape.width,
+                height: lastShape.height,
+                color: lastShape.color,
+                brushSize: lastShape.brushSize,
+                id: Date.now()
+            };
+            
+            hideSuggestionPanel();
+            redrawCanvas();
+            showToast(`Applied perfect ${shapeType} to your drawing.`);
+        }
+        
+        // Merge selected shapes
+        function mergeShapes() {
+            if (selectedShapes.length < 2) {
+                showToast('Select at least 2 shapes to merge.');
+                return;
+            }
+            
+            saveToHistory();
+            
+            // Sort selected indices in descending order for removal
+            selectedShapes.sort((a, b) => b - a);
+            
+            // Get the selected shapes
+            const selectedShapeObjects = selectedShapes.map(index => shapes[index]);
+            
+            // Calculate merged bounds
+            let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+            
+            selectedShapeObjects.forEach(shape => {
+                minX = Math.min(minX, shape.x);
+                minY = Math.min(minY, shape.y);
+                maxX = Math.max(maxX, shape.x + shape.width);
+                maxY = Math.max(maxY, shape.y + shape.height);
+            });
+            
+            // Create a new merged shape (as a group)
+            const mergedShape = {
+                type: 'group',
+                shapes: [...selectedShapeObjects],
+                x: minX,
+                y: minY,
+                width: maxX - minX,
+                height: maxY - minY,
+                color: currentColor,
+                brushSize: currentBrushSize,
+                id: Date.now()
+            };
+            
+            // Remove the original shapes
+            selectedShapes.forEach(index => {
+                shapes.splice(index, 1);
+            });
+            
+            // Add the merged shape
+            shapes.push(mergedShape);
+            
+            // Clear selection
+            selectedShapes = [];
+            
+            redrawCanvas();
+            showToast(`Merged ${selectedShapeObjects.length} shapes into a group.`);
+        }
+        
+        // Delete selected shapes
+        function deleteSelected() {
+            if (selectedShapes.length === 0) {
+                showToast('Select shapes to delete.');
+                return;
+            }
+            
+            saveToHistory();
+            
+            // Sort in descending order for removal
+            selectedShapes.sort((a, b) => b - a);
+            
+            // Remove shapes
+            selectedShapes.forEach(index => {
+                shapes.splice(index, 1);
+            });
+            
+            selectedShapes = [];
+            redrawCanvas();
+            showToast('Deleted selected shapes.');
+        }
+        
+        // Undo last action
+        function undo() {
+            if (history.length === 0) return;
+            
+            const lastState = history.pop();
+            redoStack.push(JSON.parse(JSON.stringify(shapes)));
+            shapes = lastState;
+            redrawCanvas();
+            showToast('Undo completed.');
+        }
+        
+        // Redo last undone action
+        function redo() {
+            if (redoStack.length === 0) return;
+            
+            const lastUndoneState = redoStack.pop();
+            history.push(JSON.parse(JSON.stringify(shapes)));
+            shapes = lastUndoneState;
+            redrawCanvas();
+            showToast('Redo completed.');
+        }
+        
+        // Save current state to history
+        function saveToHistory() {
+            history.push(JSON.parse(JSON.stringify(shapes)));
+            redoStack = [];
+            
+            // Limit history size
+            if (history.length > 20) {
+                history.shift();
+            }
+        }
+        
+        // Download as image
+        function downloadAsImage() {
+            const link = document.createElement('a');
+            link.download = 'shapedraw-drawing.png';
+            link.href = canvas.toDataURL('image/png');
+            link.click();
+            showToast('Image downloaded successfully!');
+        }
+        
+        // Download as PDF
+        function downloadAsPDF() {
+            showToast('PDF download would require additional libraries. PNG download is available.');
+            
+            // In a real implementation, you would use a library like jsPDF
+            // For now, we'll just show a toast message
+        }
+        
+        // Show toast notification
+        function showToast(message) {
+            toast.textContent = message;
+            toast.style.display = 'block';
+            
+            setTimeout(() => {
+                toast.style.display = 'none';
+            }, 3000);
+        }
+        
+        // Initialize the application
+        init();
+    </script>
+</body>
+</html>
