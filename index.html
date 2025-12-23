@@ -334,12 +334,6 @@
             overflow: hidden;
             box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
             pointer-events: none;
-            transition: opacity 0.3s ease;
-            opacity: 0;
-        }
-
-        .preview-window.active {
-            opacity: 1;
         }
 
         .preview-header {
@@ -380,21 +374,6 @@
             border-radius: 50%;
             pointer-events: none;
             z-index: 51;
-        }
-
-        /* Selection info display */
-        .selection-info {
-            position: absolute;
-            top: 10px;
-            left: 10px;
-            background-color: rgba(10, 42, 30, 0.9);
-            color: var(--white);
-            padding: 0.5rem 0.8rem;
-            border-radius: 6px;
-            font-size: 0.8rem;
-            z-index: 30;
-            display: none;
-            box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
         }
 
         /* Modal for shape library */
@@ -487,6 +466,21 @@
 
         .shape-modal-btn span {
             font-size: 0.8rem;
+        }
+
+        /* Selection info display */
+        .selection-info {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            background-color: rgba(10, 42, 30, 0.8);
+            color: var(--white);
+            padding: 0.5rem 1rem;
+            border-radius: 8px;
+            font-size: 0.8rem;
+            z-index: 25;
+            display: none;
+            border: 1px solid var(--deep-orange);
         }
 
         /* Footer */
@@ -620,19 +614,20 @@
             <div class="canvas-wrapper">
                 <canvas id="drawingCanvas"></canvas>
                 <div class="shape-overlay" id="shapeOverlay"></div>
-                <div class="selection-info" id="selectionInfo"></div>
                 
                 <!-- Preview window for detailed view -->
                 <div class="preview-window" id="previewWindow">
                     <div class="preview-header">
                         <span>Preview</span>
-                        <span id="previewZoomLevel">2x</span>
                     </div>
                     <div class="preview-canvas-container">
                         <canvas id="previewCanvas"></canvas>
                         <div class="preview-crosshair"></div>
                     </div>
                 </div>
+                
+                <!-- Selection info display -->
+                <div class="selection-info" id="selectionInfo"></div>
             </div>
             
             <!-- Suggestion panel - always visible -->
@@ -871,17 +866,17 @@
         let dragStartX = 0;
         let dragStartY = 0;
         let draggedShapes = [];
+        let shapeOffsetX = 0;
+        let shapeOffsetY = 0;
         let shapeIdCounter = 0;
         let canvasRect = null;
         let previewVisible = false;
         let previewScale = 2;
         let lastMouseX = 0;
         let lastMouseY = 0;
+        let isTouchDevice = false;
         let previewHideTimeout = null;
-        let isMultiSelecting = false;
-        let multiSelectStartX = 0;
-        let multiSelectStartY = 0;
-        let multiSelectRect = null;
+        let isMultiSelectMode = false;
         
         // Set canvas size
         function resizeCanvas() {
@@ -909,6 +904,9 @@
             window.addEventListener('scroll', updateCanvasRect);
             window.addEventListener('resize', updateCanvasRect);
             
+            // Detect touch device
+            isTouchDevice = ('ontouchstart' in window) || (navigator.maxTouchPoints > 0);
+            
             // Set initial canvas background
             ctx.fillStyle = '#ffffff';
             ctx.fillRect(0, 0, canvas.width, canvas.height);
@@ -916,8 +914,11 @@
             // Add event listeners
             setupEventListeners();
             
+            // Hide preview by default
+            previewWindow.style.display = 'none';
+            
             // Show welcome message
-            showToast('Welcome to ShapeDraw Pro! Draw or add shapes from the library.');
+            showToast('Welcome to ShapeDraw Pro! Tap and hold to multi-select shapes.');
         }
         
         // Set up all event listeners
@@ -1014,18 +1015,22 @@
             }
         }
         
-        // Show preview window
-        function showPreview() {
-            if (previewHideTimeout) {
-                clearTimeout(previewHideTimeout);
-                previewHideTimeout = null;
+        // Show preview window at smart position
+        function showPreviewAtPosition(x, y) {
+            if (!previewVisible) {
+                previewVisible = true;
+                previewWindow.style.display = 'block';
+                
+                // Clear any hide timeout
+                if (previewHideTimeout) {
+                    clearTimeout(previewHideTimeout);
+                    previewHideTimeout = null;
+                }
             }
             
-            previewVisible = true;
-            previewWindow.style.display = 'block';
-            setTimeout(() => {
-                previewWindow.classList.add('active');
-            }, 10);
+            // Position preview intelligently (avoid blocking the cursor/finger)
+            positionPreviewSmartly(x, y);
+            updatePreviewContent(x, y);
         }
         
         // Hide preview window with delay
@@ -1035,24 +1040,58 @@
             }
             
             previewHideTimeout = setTimeout(() => {
-                previewWindow.classList.remove('active');
-                setTimeout(() => {
-                    if (!previewVisible) {
-                        previewWindow.style.display = 'none';
-                    }
-                }, 300); // Match the CSS transition time
-            }, 1000); // Hide after 1 second of inactivity
+                previewVisible = false;
+                previewWindow.style.display = 'none';
+            }, 500); // Hide after 500ms of inactivity
         }
         
-        // Update preview window
-        function updatePreview(e) {
+        // Position preview window intelligently to avoid cursor/finger
+        function positionPreviewSmartly(x, y) {
+            const canvasWidth = canvas.width;
+            const canvasHeight = canvas.height;
+            const previewWidth = previewWindow.offsetWidth;
+            const previewHeight = previewWindow.offsetHeight;
+            
+            // Convert canvas coordinates to viewport coordinates for positioning
+            const viewportX = x * (canvasRect.width / canvas.width);
+            const viewportY = y * (canvasRect.height / canvas.height);
+            
+            // Determine which quadrant the cursor is in
+            const isRightHalf = viewportX > canvasRect.width / 2;
+            const isBottomHalf = viewportY > canvasRect.height / 2;
+            
+            // Position preview in opposite quadrant
+            let top, left;
+            
+            if (isRightHalf && isBottomHalf) {
+                // Cursor in bottom-right, put preview in top-left
+                top = '10px';
+                left = '10px';
+            } else if (isRightHalf && !isBottomHalf) {
+                // Cursor in top-right, put preview in bottom-left
+                top = `calc(100% - ${previewHeight + 10}px)`;
+                left = '10px';
+            } else if (!isRightHalf && isBottomHalf) {
+                // Cursor in bottom-left, put preview in top-right
+                top = '10px';
+                left = `calc(100% - ${previewWidth + 10}px)`;
+            } else {
+                // Cursor in top-left, put preview in bottom-right
+                top = `calc(100% - ${previewHeight + 10}px)`;
+                left = `calc(100% - ${previewWidth + 10}px)`;
+            }
+            
+            // Apply the position
+            previewWindow.style.top = top;
+            previewWindow.style.left = left;
+            previewWindow.style.right = 'auto';
+            previewWindow.style.bottom = 'auto';
+        }
+        
+        // Update preview content
+        function updatePreviewContent(x, y) {
             if (!previewVisible) return;
             
-            const { x, y } = getCanvasCoordinates(e);
-            lastMouseX = x;
-            lastMouseY = y;
-            
-            // Calculate the area to show in preview (centered on cursor)
             const previewWidth = previewCanvas.width;
             const previewHeight = previewCanvas.height;
             const sourceWidth = previewWidth / previewScale;
@@ -1087,70 +1126,17 @@
             previewCtx.strokeStyle = 'rgba(255, 107, 53, 0.7)';
             previewCtx.lineWidth = 2;
             previewCtx.strokeRect(0, 0, previewWidth, previewHeight);
-            
-            // Update preview window position to avoid cursor
-            updatePreviewPosition(e.clientX, e.clientY);
         }
         
-        // Update preview window position to avoid cursor
-        function updatePreviewPosition(cursorX, cursorY) {
-            if (!canvasRect) return;
+        // Update preview window (called from mousemove/touchmove)
+        function updatePreview(e) {
+            if (!previewVisible) return;
             
-            const previewWidth = previewWindow.offsetWidth;
-            const previewHeight = previewWindow.offsetHeight;
+            const { x, y } = getCanvasCoordinates(e);
+            lastMouseX = x;
+            lastMouseY = y;
             
-            // Calculate cursor position relative to canvas
-            const cursorRelativeX = cursorX - canvasRect.left;
-            const cursorRelativeY = cursorY - canvasRect.top;
-            
-            // Determine which quadrant the cursor is in
-            const canvasWidth = canvasRect.width;
-            const canvasHeight = canvasRect.height;
-            
-            let previewX, previewY;
-            
-            // If cursor is in left half, show preview on right
-            if (cursorRelativeX < canvasWidth / 2) {
-                previewX = canvasWidth - previewWidth - 20;
-            } else {
-                previewX = 20;
-            }
-            
-            // If cursor is in top half, show preview on bottom
-            if (cursorRelativeY < canvasHeight / 2) {
-                previewY = canvasHeight - previewHeight - 20;
-            } else {
-                previewY = 20;
-            }
-            
-            // Make sure preview stays within canvas bounds
-            previewX = Math.max(10, Math.min(canvasWidth - previewWidth - 10, previewX));
-            previewY = Math.max(10, Math.min(canvasHeight - previewHeight - 10, previewY));
-            
-            previewWindow.style.left = `${previewX}px`;
-            previewWindow.style.top = `${previewY}px`;
-        }
-        
-        // Update selection info display
-        function updateSelectionInfo() {
-            if (selectedShapeIds.length === 0) {
-                selectionInfo.style.display = 'none';
-                return;
-            }
-            
-            const count = selectedShapeIds.length;
-            selectionInfo.innerHTML = `<i class="fas fa-object-group"></i> ${count} shape${count !== 1 ? 's' : ''} selected`;
-            
-            // Show info in different positions based on selection count
-            if (count === 1) {
-                selectionInfo.style.left = '10px';
-                selectionInfo.style.top = '10px';
-            } else {
-                selectionInfo.style.left = '10px';
-                selectionInfo.style.top = '40px';
-            }
-            
-            selectionInfo.style.display = 'block';
+            updatePreviewContent(x, y);
         }
         
         // Set the current tool
@@ -1168,13 +1154,12 @@
                 canvas.style.cursor = 'crosshair';
             }
             
-            // Hide preview when switching tools
-            if (tool !== 'freehand' && tool !== 'shape') {
-                previewVisible = false;
-                previewWindow.classList.remove('active');
-                setTimeout(() => {
-                    previewWindow.style.display = 'none';
-                }, 300);
+            // Clear selection when switching tools
+            if (tool !== 'select') {
+                selectedShapeIds = [];
+                updateSelectionInfo();
+                updateShapeOverlay();
+                hidePreview();
             }
             
             // Ensure export section is visible
@@ -1220,7 +1205,7 @@
             };
         }
         
-        // Start drawing - FIXED: Proper multi-selection
+        // Start drawing or selection
         function startDrawing(e) {
             // Update canvas rect for accurate coordinates
             updateCanvasRect();
@@ -1232,8 +1217,8 @@
                 [lastX, lastY] = [x, y];
                 currentPath = [{x, y}];
                 
-                // Show preview when drawing
-                showPreview();
+                // Show preview for drawing
+                showPreviewAtPosition(x, y);
                 
                 // Start drawing immediately
                 ctx.beginPath();
@@ -1250,37 +1235,40 @@
                 shapeStartX = x;
                 shapeStartY = y;
                 
-                // Show preview when drawing shapes
-                showPreview();
+                // Show preview for shape drawing
+                showPreviewAtPosition(x, y);
             }
             else if (currentTool === 'select') {
                 // Check if clicked on a shape
                 const clickedShapeId = getShapeAtPosition(x, y, true);
                 
+                // Check for multi-select (long press on mobile, Ctrl/Cmd click on desktop)
+                const isMultiSelect = isTouchDevice ? 
+                    (e.timeStamp - (e.currentTarget.lastTouchStart || 0) > 500) : // Long press for mobile
+                    (e.ctrlKey || e.metaKey || e.shiftKey); // Ctrl/Cmd/Shift for desktop
+                
                 if (clickedShapeId !== null) {
-                    // Check if we're doing multi-select (Shift or Ctrl/Cmd key)
-                    const isMultiSelect = e.shiftKey || e.ctrlKey || e.metaKey;
-                    
                     if (isMultiSelect) {
-                        // Toggle selection of this shape
-                        const index = selectedShapeIds.indexOf(clickedShapeId);
-                        if (index === -1) {
+                        // Toggle selection for multi-select
+                        if (selectedShapeIds.includes(clickedShapeId)) {
+                            // Deselect if already selected
+                            selectedShapeIds = selectedShapeIds.filter(id => id !== clickedShapeId);
+                        } else {
                             // Add to selection
                             selectedShapeIds.push(clickedShapeId);
-                        } else {
-                            // Remove from selection
-                            selectedShapeIds.splice(index, 1);
                         }
                     } else {
-                        // If not multi-selecting and shape is not already selected, select only this shape
+                        // Single select - replace selection
                         if (!selectedShapeIds.includes(clickedShapeId)) {
                             selectedShapeIds = [clickedShapeId];
                         }
                     }
                     
-                    // Update selection display
                     updateSelectionInfo();
                     updateShapeOverlay();
+                    
+                    // Get the clicked shape
+                    const clickedShape = getShapeById(clickedShapeId);
                     
                     // Start dragging the selected shape(s)
                     isDraggingSelection = true;
@@ -1290,39 +1278,28 @@
                     // Store all selected shapes for dragging
                     draggedShapes = selectedShapeIds.map(id => getShapeById(id));
                     
-                    // Get the clicked shape for offset calculation
-                    const clickedShape = getShapeById(clickedShapeId);
+                    // Store offset from click point to shape position
                     shapeOffsetX = x - clickedShape.x;
                     shapeOffsetY = y - clickedShape.y;
                     
-                    // Show preview when dragging shapes
-                    showPreview();
+                    // Show preview for dragging
+                    showPreviewAtPosition(x, y);
                     
                     // Change cursor
                     canvas.classList.add('dragging');
                 } else {
-                    // Clicked on empty space, clear selection unless shift/ctrl is held
-                    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
+                    // Clicked on empty space
+                    if (!isMultiSelect) {
+                        // Clear selection if not multi-selecting
                         selectedShapeIds = [];
                         updateSelectionInfo();
                         updateShapeOverlay();
                     }
-                    
-                    // Start multi-select rectangle if shift is held
-                    if (e.shiftKey) {
-                        isMultiSelecting = true;
-                        multiSelectStartX = x;
-                        multiSelectStartY = y;
-                        
-                        // Create multi-select rectangle
-                        multiSelectRect = document.createElement('div');
-                        multiSelectRect.className = 'selection-highlight';
-                        multiSelectRect.style.left = `${x}px`;
-                        multiSelectRect.style.top = `${y}px`;
-                        multiSelectRect.style.width = '0';
-                        multiSelectRect.style.height = '0';
-                        shapeOverlay.appendChild(multiSelectRect);
-                    }
+                }
+                
+                // Store touch start time for mobile long press detection
+                if (isTouchDevice && e.type === 'touchstart') {
+                    e.currentTarget.lastTouchStart = e.timeStamp;
                 }
             }
         }
@@ -1333,21 +1310,6 @@
             updateCanvasRect();
             
             const { x, y } = getCanvasCoordinates(e);
-            
-            if (isMultiSelecting) {
-                // Update multi-select rectangle
-                const rectX = Math.min(multiSelectStartX, x);
-                const rectY = Math.min(multiSelectStartY, y);
-                const rectWidth = Math.abs(x - multiSelectStartX);
-                const rectHeight = Math.abs(y - multiSelectStartY);
-                
-                multiSelectRect.style.left = `${rectX}px`;
-                multiSelectRect.style.top = `${rectY}px`;
-                multiSelectRect.style.width = `${rectWidth}px`;
-                multiSelectRect.style.height = `${rectHeight}px`;
-                
-                return;
-            }
             
             if (isDraggingSelection && draggedShapes.length > 0) {
                 // Calculate drag distance
@@ -1374,6 +1336,12 @@
                     }
                 });
                 
+                // Update preview position while dragging
+                if (previewVisible) {
+                    positionPreviewSmartly(x, y);
+                    updatePreviewContent(x, y);
+                }
+                
                 // Redraw canvas and update overlay
                 redrawCanvas();
                 updateShapeOverlay();
@@ -1392,6 +1360,11 @@
                 
                 [lastX, lastY] = [x, y];
                 currentPath.push({x, y});
+                
+                // Update preview while drawing
+                if (previewVisible) {
+                    updatePreviewContent(x, y);
+                }
             }
             else if (currentTool === 'shape' && isCreatingShape) {
                 // Redraw canvas with temporary shape
@@ -1401,54 +1374,16 @@
                 ctx.save();
                 drawShape(ctx, shapeStartX, shapeStartY, x, y, currentShapeType, currentColor, currentBrushSize, true);
                 ctx.restore();
+                
+                // Update preview while drawing shape
+                if (previewVisible) {
+                    updatePreviewContent(x, y);
+                }
             }
         }
         
         // Stop drawing
         function stopDrawing(e) {
-            if (isMultiSelecting) {
-                // Handle multi-selection completion
-                isMultiSelecting = false;
-                
-                const { x, y } = getCanvasCoordinates(e);
-                const rectX = Math.min(multiSelectStartX, x);
-                const rectY = Math.min(multiSelectStartY, y);
-                const rectWidth = Math.abs(x - multiSelectStartX);
-                const rectHeight = Math.abs(y - multiSelectStartY);
-                
-                // Find shapes within the selection rectangle
-                const selectedInRect = [];
-                shapes.forEach(shape => {
-                    const shapeBounds = getShapeBounds(shape);
-                    if (rectIntersect(rectX, rectY, rectWidth, rectHeight, 
-                                     shapeBounds.x, shapeBounds.y, shapeBounds.width, shapeBounds.height)) {
-                        selectedInRect.push(shape.id);
-                    }
-                });
-                
-                // Add to selection (with shift) or replace selection
-                if (e.shiftKey) {
-                    // Add to existing selection
-                    selectedInRect.forEach(id => {
-                        if (!selectedShapeIds.includes(id)) {
-                            selectedShapeIds.push(id);
-                        }
-                    });
-                } else {
-                    // Replace selection
-                    selectedShapeIds = [...selectedInRect];
-                }
-                
-                // Remove the multi-select rectangle
-                if (multiSelectRect && multiSelectRect.parentNode) {
-                    multiSelectRect.parentNode.removeChild(multiSelectRect);
-                }
-                
-                updateSelectionInfo();
-                updateShapeOverlay();
-                return;
-            }
-            
             if (currentTool === 'freehand' && isDrawing) {
                 isDrawing = false;
                 
@@ -1483,9 +1418,7 @@
                 redrawCanvas();
                 
                 // Hide preview after drawing
-                setTimeout(() => {
-                    hidePreview();
-                }, 500);
+                hidePreview();
             }
             else if (currentTool === 'shape' && isCreatingShape) {
                 const { x, y } = getCanvasCoordinates(e);
@@ -1513,10 +1446,8 @@
                     redrawCanvas();
                 }
                 
-                // Hide preview after creating shape
-                setTimeout(() => {
-                    hidePreview();
-                }, 500);
+                // Hide preview after shape creation
+                hidePreview();
             }
             else if (isDraggingSelection) {
                 isDraggingSelection = false;
@@ -1525,9 +1456,12 @@
                 canvas.classList.remove('dragging');
                 
                 // Hide preview after dragging
-                setTimeout(() => {
-                    hidePreview();
-                }, 500);
+                hidePreview();
+            }
+            
+            // Clear touch start time
+            if (canvas.lastTouchStart) {
+                canvas.lastTouchStart = 0;
             }
         }
         
@@ -1539,7 +1473,6 @@
         
         function handleTouchMove(e) {
             draw(e);
-            updatePreview(e);
         }
         
         function handleTouchEnd(e) {
@@ -1771,16 +1704,15 @@
                 
                 ctx.restore();
             });
-            
-            // Update preview if visible
-            if (previewVisible) {
-                // Trigger a preview update with last mouse position
-                const fakeEvent = { 
-                    type: 'mousemove',
-                    clientX: lastMouseX * (canvasRect.width / canvas.width) + canvasRect.left,
-                    clientY: lastMouseY * (canvasRect.height / canvas.height) + canvasRect.top
-                };
-                updatePreview(fakeEvent);
+        }
+        
+        // Update selection info display
+        function updateSelectionInfo() {
+            if (selectedShapeIds.length === 0) {
+                selectionInfo.style.display = 'none';
+            } else {
+                selectionInfo.textContent = `${selectedShapeIds.length} shape${selectedShapeIds.length > 1 ? 's' : ''} selected`;
+                selectionInfo.style.display = 'block';
             }
         }
         
@@ -1794,10 +1726,6 @@
                 const shape = getShapeById(id);
                 if (!shape) return;
                 
-                // Create accurate selection highlight
-                const highlight = document.createElement('div');
-                highlight.className = 'selection-highlight';
-                
                 // Calculate exact bounds for better accuracy
                 let bounds = { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
                 
@@ -1806,6 +1734,9 @@
                     bounds = getPathBounds(shape.path);
                 }
                 
+                // Create accurate selection highlight
+                const highlight = document.createElement('div');
+                highlight.className = 'selection-highlight';
                 highlight.style.left = `${bounds.x - 4}px`;
                 highlight.style.top = `${bounds.y - 4}px`;
                 highlight.style.width = `${bounds.width + 8}px`;
@@ -1970,25 +1901,6 @@
             return shapes.find(shape => shape.id === id);
         }
         
-        // Get bounds of a shape
-        function getShapeBounds(shape) {
-            if (shape.type === 'freehand' && shape.path && shape.path.length > 0) {
-                return getPathBounds(shape.path);
-            } else {
-                return {
-                    x: shape.x,
-                    y: shape.y,
-                    width: shape.width,
-                    height: shape.height
-                };
-            }
-        }
-        
-        // Check if two rectangles intersect
-        function rectIntersect(x1, y1, w1, h1, x2, y2, w2, h2) {
-            return x1 < x2 + w2 && x1 + w1 > x2 && y1 < y2 + h2 && y1 + h1 > y2;
-        }
-        
         // Get bounds of a path
         function getPathBounds(path) {
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -2036,10 +1948,10 @@
             showToast(`Applied perfect ${shapeType} to your drawing.`);
         }
         
-        // Merge selected shapes - FIXED: Now works with multi-selection
+        // Merge selected shapes
         function mergeShapes() {
             if (selectedShapeIds.length < 2) {
-                showToast('Select at least 2 shapes to merge. Hold Shift to select multiple shapes.');
+                showToast(`Select at least 2 shapes to merge. Currently ${selectedShapeIds.length} selected.`);
                 return;
             }
             
@@ -2052,11 +1964,10 @@
             let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
             
             selectedShapes.forEach(shape => {
-                const bounds = getShapeBounds(shape);
-                minX = Math.min(minX, bounds.x);
-                minY = Math.min(minY, bounds.y);
-                maxX = Math.max(maxX, bounds.x + bounds.width);
-                maxY = Math.max(maxY, bounds.y + bounds.height);
+                minX = Math.min(minX, shape.x);
+                minY = Math.min(minY, shape.y);
+                maxX = Math.max(maxX, shape.x + shape.width);
+                maxY = Math.max(maxY, shape.y + shape.height);
             });
             
             // Create a new merged shape (as a group)
@@ -2125,6 +2036,7 @@
             redoStack.push(JSON.parse(JSON.stringify(shapes)));
             shapes = lastState;
             redrawCanvas();
+            updateSelectionInfo();
             updateShapeOverlay();
             showToast('Undo completed.');
         }
@@ -2137,6 +2049,7 @@
             history.push(JSON.parse(JSON.stringify(shapes)));
             shapes = lastUndoneState;
             redrawCanvas();
+            updateSelectionInfo();
             updateShapeOverlay();
             showToast('Redo completed.');
         }
@@ -2163,8 +2076,8 @@
                 saveToHistory();
                 shapes = [];
                 selectedShapeIds = [];
-                redrawCanvas();
                 updateSelectionInfo();
+                redrawCanvas();
                 updateShapeOverlay();
                 showToast('Canvas cleared.');
             }
@@ -2239,6 +2152,9 @@
         // Download as PDF
         function downloadAsPDF() {
             showToast('PDF export requires additional libraries. PNG download is available.');
+            
+            // In a real implementation, you would use a library like jsPDF
+            // For now, we'll just show a toast message
         }
         
         // Show toast notification
