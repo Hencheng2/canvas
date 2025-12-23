@@ -92,6 +92,7 @@
             flex-direction: column;
             flex: 1;
             overflow: hidden;
+            position: relative;
         }
 
         .canvas-container {
@@ -111,11 +112,16 @@
             overflow: hidden;
             position: relative;
             box-shadow: inset 0 0 10px rgba(0, 0, 0, 0.1);
+            width: 100%;
+            height: 100%;
         }
 
         #drawingCanvas {
             display: block;
             cursor: crosshair;
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
         }
@@ -125,14 +131,16 @@
             position: absolute;
             top: 0;
             left: 0;
+            width: 100%;
+            height: 100%;
             pointer-events: none;
             z-index: 10;
         }
 
         .shape-handle {
             position: absolute;
-            width: 12px;
-            height: 12px;
+            width: 16px;
+            height: 16px;
             background-color: var(--deep-orange);
             border: 2px solid var(--white);
             border-radius: 50%;
@@ -140,6 +148,7 @@
             cursor: move;
             transform: translate(-50%, -50%);
             z-index: 20;
+            box-shadow: 0 2px 4px rgba(0, 0, 0, 0.3);
         }
 
         .shape-bounding-box {
@@ -267,7 +276,7 @@
             border-radius: 8px;
             padding: 0.8rem;
             margin-top: 0.8rem;
-            display: block;
+            display: none;
         }
 
         .suggestion-panel h3 {
@@ -394,18 +403,6 @@
             font-size: 0.8rem;
         }
 
-        /* Shape on canvas */
-        .shape {
-            position: absolute;
-            cursor: move;
-            user-select: none;
-            transform-origin: center;
-        }
-
-        .shape.selected {
-            z-index: 100;
-        }
-
         /* Footer */
         .footer {
             background-color: var(--medium-green);
@@ -488,12 +485,9 @@
             to { transform: translateX(0); opacity: 1; }
         }
 
-        /* Shape preview during drag */
-        .shape-preview {
-            position: absolute;
-            pointer-events: none;
-            z-index: 50;
-            opacity: 0.7;
+        /* Dragging cursor */
+        .dragging {
+            cursor: grabbing !important;
         }
     </style>
 </head>
@@ -746,37 +740,35 @@
         let shapeStartX = 0;
         let shapeStartY = 0;
         let isDraggingShape = false;
+        let isDraggingSelection = false;
         let dragStartX = 0;
         let dragStartY = 0;
-        let draggedShape = null;
+        let draggedShapes = [];
+        let shapeOffsetX = 0;
+        let shapeOffsetY = 0;
         let shapeIdCounter = 0;
-        
-        // Shape definitions
-        const shapeDefinitions = {
-            rectangle: { name: 'Rectangle', icon: 'far fa-square' },
-            circle: { name: 'Circle', icon: 'far fa-circle' },
-            triangle: { name: 'Triangle', icon: 'fas fa-play' },
-            line: { name: 'Line', icon: 'fas fa-minus' },
-            star: { name: 'Star', icon: 'fas fa-star' },
-            arrow: { name: 'Arrow', icon: 'fas fa-arrow-right' },
-            heart: { name: 'Heart', icon: 'fas fa-heart' },
-            hexagon: { name: 'Hexagon', icon: 'fas fa-bezier-curve' },
-            pentagon: { name: 'Pentagon', icon: 'fas fa-shield-alt' },
-            ellipse: { name: 'Ellipse', icon: 'far fa-circle' }
-        };
+        let canvasRect = null;
         
         // Set canvas size
         function resizeCanvas() {
             const container = canvas.parentElement;
             canvas.width = container.clientWidth;
             canvas.height = container.clientHeight;
+            updateCanvasRect();
             redrawCanvas();
+        }
+        
+        // Update canvas bounding rect for accurate coordinates
+        function updateCanvasRect() {
+            canvasRect = canvas.getBoundingClientRect();
         }
         
         // Initialize the app
         function init() {
             resizeCanvas();
             window.addEventListener('resize', resizeCanvas);
+            window.addEventListener('scroll', updateCanvasRect);
+            window.addEventListener('resize', updateCanvasRect);
             
             // Set initial canvas background
             ctx.fillStyle = '#ffffff';
@@ -817,7 +809,7 @@
                     currentShapeType = button.getAttribute('data-shape');
                     shapeModal.style.display = 'none';
                     setTool('shape');
-                    showToast(`Click and drag to draw a ${shapeDefinitions[currentShapeType].name}`);
+                    showToast(`Click and drag to draw a ${currentShapeType}`);
                 });
             });
             
@@ -853,16 +845,17 @@
                 suggestionPanel.style.display = 'none';
             });
             
-            // Canvas events
+            // Canvas events - FIXED: Proper coordinate tracking
             canvas.addEventListener('mousedown', startDrawing);
             canvas.addEventListener('mousemove', draw);
             canvas.addEventListener('mouseup', stopDrawing);
-            canvas.addEventListener('mouseout', stopDrawing);
+            canvas.addEventListener('mouseleave', stopDrawing);
             
-            // Touch events for mobile
-            canvas.addEventListener('touchstart', handleTouchStart);
-            canvas.addEventListener('touchmove', handleTouchMove);
+            // Touch events for mobile - FIXED
+            canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
+            canvas.addEventListener('touchmove', handleTouchMove, { passive: false });
             canvas.addEventListener('touchend', handleTouchEnd);
+            canvas.addEventListener('touchcancel', handleTouchEnd);
             
             // Prevent context menu on canvas
             canvas.addEventListener('contextmenu', (e) => e.preventDefault());
@@ -879,8 +872,6 @@
             // Update cursor
             if (tool === 'select') {
                 canvas.style.cursor = 'default';
-            } else if (tool === 'shape') {
-                canvas.style.cursor = 'crosshair';
             } else {
                 canvas.style.cursor = 'crosshair';
             }
@@ -892,15 +883,66 @@
             }
         }
         
+        // Get accurate canvas coordinates - FIXED VERSION
+        function getCanvasCoordinates(e) {
+            if (!canvasRect) updateCanvasRect();
+            
+            let clientX, clientY;
+            
+            if (e.type.includes('touch')) {
+                // For touch events
+                if (e.touches && e.touches.length > 0) {
+                    clientX = e.touches[0].clientX;
+                    clientY = e.touches[0].clientY;
+                    e.preventDefault(); // Prevent scrolling
+                } else if (e.changedTouches && e.changedTouches.length > 0) {
+                    // For touchend events
+                    clientX = e.changedTouches[0].clientX;
+                    clientY = e.changedTouches[0].clientY;
+                } else {
+                    return { x: 0, y: 0 };
+                }
+            } else {
+                // For mouse events
+                clientX = e.clientX;
+                clientY = e.clientY;
+            }
+            
+            // Calculate position relative to canvas
+            const x = clientX - canvasRect.left;
+            const y = clientY - canvasRect.top;
+            
+            // Scale coordinates to match canvas internal size
+            const scaleX = canvas.width / canvasRect.width;
+            const scaleY = canvas.height / canvasRect.height;
+            
+            return {
+                x: x * scaleX,
+                y: y * scaleY
+            };
+        }
+        
         // Start drawing
         function startDrawing(e) {
-            e.preventDefault();
+            // Update canvas rect for accurate coordinates
+            updateCanvasRect();
+            
             const { x, y } = getCanvasCoordinates(e);
             
             if (currentTool === 'freehand') {
                 isDrawing = true;
                 [lastX, lastY] = [x, y];
-                currentPath = [{x, y, pressure: 1}];
+                currentPath = [{x, y}];
+                
+                // Start drawing immediately
+                ctx.beginPath();
+                ctx.moveTo(x, y);
+                ctx.lineTo(x, y);
+                ctx.strokeStyle = currentColor;
+                ctx.lineWidth = currentBrushSize;
+                ctx.lineCap = 'round';
+                ctx.lineJoin = 'round';
+                ctx.stroke();
             } 
             else if (currentTool === 'shape' && currentShapeType) {
                 isCreatingShape = true;
@@ -912,15 +954,17 @@
                 const clickedShapeId = getShapeAtPosition(x, y);
                 
                 if (clickedShapeId !== null) {
-                    // Start dragging the shape
-                    isDraggingShape = true;
+                    // Start dragging the shape(s)
+                    isDraggingSelection = true;
                     dragStartX = x;
                     dragStartY = y;
-                    draggedShape = getShapeById(clickedShapeId);
+                    
+                    // Get the clicked shape
+                    const clickedShape = getShapeById(clickedShapeId);
                     
                     // Select shape if not already selected
                     if (!selectedShapeIds.includes(clickedShapeId)) {
-                        if (e.shiftKey || e.ctrlKey) {
+                        if (e.shiftKey || e.ctrlKey || e.metaKey) {
                             // Multi-select
                             selectedShapeIds.push(clickedShapeId);
                         } else {
@@ -929,9 +973,19 @@
                         }
                         updateShapeOverlay();
                     }
+                    
+                    // Store all selected shapes for dragging
+                    draggedShapes = selectedShapeIds.map(id => getShapeById(id));
+                    
+                    // Store offset from click point to shape position
+                    shapeOffsetX = x - clickedShape.x;
+                    shapeOffsetY = y - clickedShape.y;
+                    
+                    // Change cursor
+                    canvas.classList.add('dragging');
                 } else {
                     // Clicked on empty space, clear selection unless shift/ctrl is held
-                    if (!e.shiftKey && !e.ctrlKey) {
+                    if (!e.shiftKey && !e.ctrlKey && !e.metaKey) {
                         selectedShapeIds = [];
                         updateShapeOverlay();
                     }
@@ -941,33 +995,29 @@
         
         // Draw on canvas
         function draw(e) {
-            e.preventDefault();
+            // Update canvas rect for accurate coordinates
+            updateCanvasRect();
             
             const { x, y } = getCanvasCoordinates(e);
             
-            if (isDraggingShape && draggedShape) {
+            if (isDraggingSelection && draggedShapes.length > 0) {
                 // Calculate drag distance
                 const dx = x - dragStartX;
                 const dy = y - dragStartY;
-                
-                // Move the dragged shape
-                draggedShape.x += dx;
-                draggedShape.y += dx;
-                
-                // Also move other selected shapes
-                selectedShapeIds.forEach(id => {
-                    const shape = getShapeById(id);
-                    if (shape && shape !== draggedShape) {
-                        shape.x += dx;
-                        shape.y += dy;
-                    }
-                });
                 
                 // Update drag start position
                 dragStartX = x;
                 dragStartY = y;
                 
-                // Redraw canvas
+                // Move all dragged shapes
+                draggedShapes.forEach(shape => {
+                    if (shape) {
+                        shape.x += dx;
+                        shape.y += dy;
+                    }
+                });
+                
+                // Redraw canvas and update overlay
                 redrawCanvas();
                 updateShapeOverlay();
                 return;
@@ -984,7 +1034,7 @@
                 ctx.stroke();
                 
                 [lastX, lastY] = [x, y];
-                currentPath.push({x, y, pressure: 1});
+                currentPath.push({x, y});
             }
             else if (currentTool === 'shape' && isCreatingShape) {
                 // Redraw canvas with temporary shape
@@ -999,8 +1049,6 @@
         
         // Stop drawing
         function stopDrawing(e) {
-            e.preventDefault();
-            
             if (currentTool === 'freehand' && isDrawing) {
                 isDrawing = false;
                 
@@ -1060,60 +1108,26 @@
                     redrawCanvas();
                 }
             }
-            else if (isDraggingShape) {
-                isDraggingShape = false;
-                draggedShape = null;
+            else if (isDraggingSelection) {
+                isDraggingSelection = false;
+                draggedShapes = [];
                 saveToHistory();
+                canvas.classList.remove('dragging');
             }
         }
         
-        // Touch event handlers for mobile
+        // Touch event handlers for mobile - FIXED
         function handleTouchStart(e) {
-            e.preventDefault();
-            const touch = e.touches[0];
-            const mouseEvent = new MouseEvent('mousedown', {
-                clientX: touch.clientX,
-                clientY: touch.clientY
-            });
-            canvas.dispatchEvent(mouseEvent);
+            updateCanvasRect();
+            startDrawing(e);
         }
         
         function handleTouchMove(e) {
-            e.preventDefault();
-            const touch = e.touches[0];
-            const mouseEvent = new MouseEvent('mousemove', {
-                clientX: touch.clientX,
-                clientY: touch.clientY,
-                bubbles: true
-            });
-            canvas.dispatchEvent(mouseEvent);
+            draw(e);
         }
         
         function handleTouchEnd(e) {
-            e.preventDefault();
-            const mouseEvent = new MouseEvent('mouseup', {});
-            canvas.dispatchEvent(mouseEvent);
-        }
-        
-        // Get canvas coordinates from event
-        function getCanvasCoordinates(e) {
-            const rect = canvas.getBoundingClientRect();
-            let x, y;
-            
-            if (e.touches) {
-                x = e.touches[0].clientX - rect.left;
-                y = e.touches[0].clientY - rect.top;
-            } else {
-                x = e.clientX - rect.left;
-                y = e.clientY - rect.top;
-            }
-            
-            // Adjust for device pixel ratio
-            const dpr = window.devicePixelRatio || 1;
-            x *= dpr;
-            y *= dpr;
-            
-            return { x, y };
+            stopDrawing(e);
         }
         
         // Draw a shape on canvas
@@ -1318,9 +1332,11 @@
                     ctx.lineJoin = 'round';
                     
                     ctx.beginPath();
-                    ctx.moveTo(shape.path[0].x, shape.path[0].y);
-                    for (let i = 1; i < shape.path.length; i++) {
-                        ctx.lineTo(shape.path[i].x, shape.path[i].y);
+                    if (shape.path.length > 0) {
+                        ctx.moveTo(shape.path[0].x, shape.path[0].y);
+                        for (let i = 1; i < shape.path.length; i++) {
+                            ctx.lineTo(shape.path[i].x, shape.path[i].y);
+                        }
                     }
                     ctx.stroke();
                 } else {
@@ -1354,25 +1370,25 @@
                 // Create bounding box
                 const box = document.createElement('div');
                 box.className = 'shape-bounding-box';
-                box.style.left = `${shape.x - 5}px`;
-                box.style.top = `${shape.y - 5}px`;
-                box.style.width = `${shape.width + 10}px`;
-                box.style.height = `${shape.height + 10}px`;
+                box.style.left = `${shape.x}px`;
+                box.style.top = `${shape.y}px`;
+                box.style.width = `${shape.width}px`;
+                box.style.height = `${shape.height}px`;
                 shapeOverlay.appendChild(box);
                 
                 // Create resize handles (only for non-freehand shapes)
                 if (shape.type !== 'freehand') {
                     // Top-left handle
-                    createHandle(shape.x - 5, shape.y - 5, 'nwse-resize', shape.id, 'tl');
+                    createHandle(shape.x, shape.y, 'nwse-resize', shape.id, 'tl');
                     
                     // Top-right handle
-                    createHandle(shape.x + shape.width + 5, shape.y - 5, 'nesw-resize', shape.id, 'tr');
+                    createHandle(shape.x + shape.width, shape.y, 'nesw-resize', shape.id, 'tr');
                     
                     // Bottom-left handle
-                    createHandle(shape.x - 5, shape.y + shape.height + 5, 'nesw-resize', shape.id, 'bl');
+                    createHandle(shape.x, shape.y + shape.height, 'nesw-resize', shape.id, 'bl');
                     
                     // Bottom-right handle
-                    createHandle(shape.x + shape.width + 5, shape.y + shape.height + 5, 'nwse-resize', shape.id, 'br');
+                    createHandle(shape.x + shape.width, shape.y + shape.height, 'nwse-resize', shape.id, 'br');
                 }
             });
         }
@@ -1387,38 +1403,7 @@
             handle.dataset.shapeId = shapeId;
             handle.dataset.handleType = type;
             
-            // Add drag functionality for resize
-            handle.addEventListener('mousedown', startResize);
-            handle.addEventListener('touchstart', startResize);
-            
             shapeOverlay.appendChild(handle);
-        }
-        
-        // Start resizing a shape
-        function startResize(e) {
-            e.preventDefault();
-            e.stopPropagation();
-            
-            const shapeId = parseInt(e.target.dataset.shapeId);
-            const handleType = e.target.dataset.handleType;
-            const shape = getShapeById(shapeId);
-            
-            if (!shape) return;
-            
-            const { x, y } = getCanvasCoordinates(e);
-            
-            // Set up resize state
-            isDraggingShape = true;
-            draggedShape = shape;
-            dragStartX = x;
-            dragStartY = y;
-            
-            // Store original shape dimensions
-            draggedShape.originalX = shape.x;
-            draggedShape.originalY = shape.y;
-            draggedShape.originalWidth = shape.width;
-            draggedShape.originalHeight = shape.height;
-            draggedShape.resizeHandle = handleType;
         }
         
         // Get shape at position
@@ -1446,7 +1431,7 @@
         
         // Check if point is near a freehand path
         function isPointNearFreehand(x, y, shape) {
-            const threshold = 10; // pixels
+            const threshold = shape.brushSize + 5; // pixels
             for (let i = 0; i < shape.path.length; i++) {
                 const point = shape.path[i];
                 const distance = Math.sqrt((x - point.x) ** 2 + (y - point.y) ** 2);
@@ -1641,9 +1626,66 @@
         
         // Download as image
         function downloadAsImage() {
+            // Create a temporary canvas with white background
+            const tempCanvas = document.createElement('canvas');
+            const tempCtx = tempCanvas.getContext('2d');
+            
+            tempCanvas.width = canvas.width;
+            tempCanvas.height = canvas.height;
+            
+            // Fill with white background
+            tempCtx.fillStyle = '#ffffff';
+            tempCtx.fillRect(0, 0, tempCanvas.width, tempCanvas.height);
+            
+            // Draw all shapes
+            shapes.forEach(shape => {
+                if (shape.type === 'freehand') {
+                    tempCtx.strokeStyle = shape.color;
+                    tempCtx.lineWidth = shape.brushSize;
+                    tempCtx.lineCap = 'round';
+                    tempCtx.lineJoin = 'round';
+                    
+                    tempCtx.beginPath();
+                    if (shape.path.length > 0) {
+                        tempCtx.moveTo(shape.path[0].x, shape.path[0].y);
+                        for (let i = 1; i < shape.path.length; i++) {
+                            tempCtx.lineTo(shape.path[i].x, shape.path[i].y);
+                        }
+                    }
+                    tempCtx.stroke();
+                } else {
+                    // For regular shapes, draw them
+                    const x2 = shape.x + shape.width;
+                    const y2 = shape.y + shape.height;
+                    
+                    tempCtx.strokeStyle = shape.color;
+                    tempCtx.lineWidth = shape.brushSize;
+                    tempCtx.fillStyle = shape.color + '20';
+                    tempCtx.lineJoin = 'round';
+                    tempCtx.lineCap = 'round';
+                    
+                    switch(shape.type) {
+                        case 'rectangle':
+                            tempCtx.fillRect(shape.x, shape.y, shape.width, shape.height);
+                            tempCtx.strokeRect(shape.x, shape.y, shape.width, shape.height);
+                            break;
+                        case 'circle':
+                            const centerX = shape.x + shape.width / 2;
+                            const centerY = shape.y + shape.height / 2;
+                            const radius = Math.min(shape.width, shape.height) / 2;
+                            tempCtx.beginPath();
+                            tempCtx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+                            tempCtx.fill();
+                            tempCtx.stroke();
+                            break;
+                        // Add other shape types as needed
+                    }
+                }
+            });
+            
             const link = document.createElement('a');
             link.download = 'shapedraw-drawing.png';
-            link.href = canvas.toDataURL('image/png');
+            link.href = tempCanvas.toDataURL('image/png');
             link.click();
             showToast('Image downloaded successfully!');
         }
