@@ -168,8 +168,18 @@
             flex-direction: column;
             gap: 0.8rem;
             overflow-y: auto;
-            max-height: 40vh;
+            max-height: 45vh;
             flex-shrink: 0;
+        }
+
+        /* Make export section more accessible */
+        .toolbar-section.export-section {
+            position: sticky;
+            bottom: 0;
+            background-color: var(--medium-green);
+            padding-top: 0.8rem;
+            border-top: 1px solid var(--light-green);
+            margin-top: auto;
         }
 
         .toolbar-section {
@@ -311,6 +321,63 @@
             background-color: var(--deep-orange);
         }
 
+        /* Preview Window - Shows detailed view */
+        .preview-window {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            width: 200px;
+            height: 200px;
+            background-color: var(--medium-green);
+            border: 2px solid var(--deep-orange);
+            border-radius: 8px;
+            z-index: 50;
+            display: none;
+            overflow: hidden;
+            box-shadow: 0 4px 15px rgba(0, 0, 0, 0.4);
+            pointer-events: none;
+        }
+
+        .preview-header {
+            background-color: var(--deep-orange);
+            color: var(--white);
+            padding: 0.4rem 0.8rem;
+            font-size: 0.8rem;
+            font-weight: bold;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .preview-canvas-container {
+            width: 100%;
+            height: calc(100% - 30px);
+            overflow: hidden;
+            position: relative;
+        }
+
+        #previewCanvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-color: white;
+        }
+
+        .preview-crosshair {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            width: 20px;
+            height: 20px;
+            border: 2px solid red;
+            border-radius: 50%;
+            pointer-events: none;
+            z-index: 51;
+        }
+
         /* Modal for shape library */
         .shape-modal {
             position: fixed;
@@ -446,6 +513,11 @@
                 padding: 0.7rem 1.5rem;
                 font-size: 1rem;
             }
+            
+            .preview-window {
+                width: 250px;
+                height: 250px;
+            }
         }
 
         @media (max-width: 767px) {
@@ -460,6 +532,17 @@
             
             .suggestion-btn {
                 min-width: 100px;
+            }
+            
+            .toolbar-container {
+                max-height: 50vh;
+            }
+            
+            .preview-window {
+                width: 150px;
+                height: 150px;
+                top: 10px;
+                right: 10px;
             }
         }
 
@@ -489,6 +572,16 @@
         .dragging {
             cursor: grabbing !important;
         }
+        
+        /* Selection accuracy improvements */
+        .selection-highlight {
+            position: absolute;
+            background-color: rgba(255, 107, 53, 0.2);
+            border: 2px solid var(--deep-orange);
+            pointer-events: none;
+            z-index: 30;
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body>
@@ -510,6 +603,20 @@
             <div class="canvas-wrapper">
                 <canvas id="drawingCanvas"></canvas>
                 <div class="shape-overlay" id="shapeOverlay"></div>
+                
+                <!-- Preview window for detailed view -->
+                <div class="preview-window" id="previewWindow">
+                    <div class="preview-header">
+                        <span>Preview</span>
+                        <button id="togglePreview" style="background: none; border: none; color: white; cursor: pointer;">
+                            <i class="fas fa-eye"></i>
+                        </button>
+                    </div>
+                    <div class="preview-canvas-container">
+                        <canvas id="previewCanvas"></canvas>
+                        <div class="preview-crosshair"></div>
+                    </div>
+                </div>
             </div>
             
             <!-- Suggestion panel - always visible -->
@@ -526,7 +633,7 @@
         </div>
 
         <!-- Toolbar (mobile optimized, placed below canvas) -->
-        <div class="toolbar-container">
+        <div class="toolbar-container" id="toolbarContainer">
             <!-- Drawing Tools -->
             <div class="toolbar-section">
                 <div class="section-title">
@@ -601,8 +708,8 @@
                 </div>
             </div>
 
-            <!-- Export Tools -->
-            <div class="toolbar-section">
+            <!-- Export Tools - Made more accessible -->
+            <div class="toolbar-section export-section">
                 <div class="section-title">
                     <i class="fas fa-download"></i> Export
                 </div>
@@ -691,6 +798,11 @@
         const suggestionPanel = document.getElementById('suggestionPanel');
         const toast = document.getElementById('toast');
         const shapeModal = document.getElementById('shapeModal');
+        const previewWindow = document.getElementById('previewWindow');
+        const previewCanvas = document.getElementById('previewCanvas');
+        const previewCtx = previewCanvas.getContext('2d');
+        const togglePreviewBtn = document.getElementById('togglePreview');
+        const toolbarContainer = document.getElementById('toolbarContainer');
         
         // Tool buttons
         const freehandTool = document.getElementById('freehandTool');
@@ -739,7 +851,6 @@
         let isCreatingShape = false;
         let shapeStartX = 0;
         let shapeStartY = 0;
-        let isDraggingShape = false;
         let isDraggingSelection = false;
         let dragStartX = 0;
         let dragStartY = 0;
@@ -748,12 +859,21 @@
         let shapeOffsetY = 0;
         let shapeIdCounter = 0;
         let canvasRect = null;
+        let previewVisible = true;
+        let previewScale = 2;
+        let lastMouseX = 0;
+        let lastMouseY = 0;
         
         // Set canvas size
         function resizeCanvas() {
             const container = canvas.parentElement;
             canvas.width = container.clientWidth;
             canvas.height = container.clientHeight;
+            
+            // Also resize preview canvas
+            previewCanvas.width = previewWindow.clientWidth;
+            previewCanvas.height = previewWindow.clientHeight - 30; // Subtract header height
+            
             updateCanvasRect();
             redrawCanvas();
         }
@@ -776,6 +896,9 @@
             
             // Add event listeners
             setupEventListeners();
+            
+            // Show preview by default
+            previewWindow.style.display = 'block';
             
             // Show welcome message
             showToast('Welcome to ShapeDraw Pro! Draw or add shapes from the library.');
@@ -845,11 +968,15 @@
                 suggestionPanel.style.display = 'none';
             });
             
+            // Toggle preview
+            togglePreviewBtn.addEventListener('click', togglePreview);
+            
             // Canvas events - FIXED: Proper coordinate tracking
             canvas.addEventListener('mousedown', startDrawing);
             canvas.addEventListener('mousemove', draw);
             canvas.addEventListener('mouseup', stopDrawing);
             canvas.addEventListener('mouseleave', stopDrawing);
+            canvas.addEventListener('mousemove', updatePreview);
             
             // Touch events for mobile - FIXED
             canvas.addEventListener('touchstart', handleTouchStart, { passive: false });
@@ -859,6 +986,76 @@
             
             // Prevent context menu on canvas
             canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+            
+            // Ensure toolbar is scrollable to export section
+            ensureExportVisible();
+        }
+        
+        // Ensure export section is visible
+        function ensureExportVisible() {
+            // Auto-scroll to bottom on mobile to show export buttons
+            if (window.innerWidth <= 767) {
+                setTimeout(() => {
+                    toolbarContainer.scrollTop = toolbarContainer.scrollHeight;
+                }, 100);
+            }
+        }
+        
+        // Toggle preview window
+        function togglePreview() {
+            previewVisible = !previewVisible;
+            if (previewVisible) {
+                previewWindow.style.display = 'block';
+                togglePreviewBtn.innerHTML = '<i class="fas fa-eye"></i>';
+            } else {
+                previewWindow.style.display = 'none';
+                togglePreviewBtn.innerHTML = '<i class="fas fa-eye-slash"></i>';
+            }
+        }
+        
+        // Update preview window
+        function updatePreview(e) {
+            if (!previewVisible) return;
+            
+            const { x, y } = getCanvasCoordinates(e);
+            lastMouseX = x;
+            lastMouseY = y;
+            
+            // Calculate the area to show in preview (centered on cursor)
+            const previewWidth = previewCanvas.width;
+            const previewHeight = previewCanvas.height;
+            const sourceWidth = previewWidth / previewScale;
+            const sourceHeight = previewHeight / previewScale;
+            
+            // Clear preview canvas
+            previewCtx.fillStyle = '#ffffff';
+            previewCtx.fillRect(0, 0, previewWidth, previewHeight);
+            
+            // Draw the zoomed area from main canvas
+            const sourceX = Math.max(0, Math.min(canvas.width - sourceWidth, x - sourceWidth/2));
+            const sourceY = Math.max(0, Math.min(canvas.height - sourceHeight, y - sourceHeight/2));
+            
+            // Draw the current canvas state
+            previewCtx.drawImage(
+                canvas, 
+                sourceX, sourceY, sourceWidth, sourceHeight,
+                0, 0, previewWidth, previewHeight
+            );
+            
+            // Draw a crosshair at the center
+            previewCtx.strokeStyle = 'red';
+            previewCtx.lineWidth = 1;
+            previewCtx.beginPath();
+            previewCtx.moveTo(previewWidth/2 - 10, previewHeight/2);
+            previewCtx.lineTo(previewWidth/2 + 10, previewHeight/2);
+            previewCtx.moveTo(previewWidth/2, previewHeight/2 - 10);
+            previewCtx.lineTo(previewWidth/2, previewHeight/2 + 10);
+            previewCtx.stroke();
+            
+            // Draw a rectangle showing the area being previewed
+            previewCtx.strokeStyle = 'rgba(255, 107, 53, 0.7)';
+            previewCtx.lineWidth = 2;
+            previewCtx.strokeRect(0, 0, previewWidth, previewHeight);
         }
         
         // Set the current tool
@@ -881,6 +1078,9 @@
                 selectedShapeIds = [];
                 updateShapeOverlay();
             }
+            
+            // Ensure export section is visible
+            ensureExportVisible();
         }
         
         // Get accurate canvas coordinates - FIXED VERSION
@@ -950,8 +1150,8 @@
                 shapeStartY = y;
             }
             else if (currentTool === 'select') {
-                // Check if clicked on a shape
-                const clickedShapeId = getShapeAtPosition(x, y);
+                // Check if clicked on a shape with improved accuracy
+                const clickedShapeId = getShapeAtPosition(x, y, true);
                 
                 if (clickedShapeId !== null) {
                     // Start dragging the shape(s)
@@ -1014,6 +1214,14 @@
                     if (shape) {
                         shape.x += dx;
                         shape.y += dy;
+                        
+                        // Also update path coordinates for freehand shapes
+                        if (shape.type === 'freehand' && shape.path) {
+                            shape.path.forEach(point => {
+                                point.x += dx;
+                                point.y += dy;
+                            });
+                        }
                     }
                 });
                 
@@ -1124,6 +1332,7 @@
         
         function handleTouchMove(e) {
             draw(e);
+            updatePreview(e);
         }
         
         function handleTouchEnd(e) {
@@ -1355,9 +1564,20 @@
                 
                 ctx.restore();
             });
+            
+            // Update preview if visible
+            if (previewVisible) {
+                // Trigger a preview update with last mouse position
+                const fakeEvent = { 
+                    type: 'mousemove',
+                    clientX: lastMouseX * (canvasRect.width / canvas.width) + canvasRect.left,
+                    clientY: lastMouseY * (canvasRect.height / canvas.height) + canvasRect.top
+                };
+                updatePreview(fakeEvent);
+            }
         }
         
-        // Update the shape overlay (selection handles)
+        // Update the shape overlay (selection handles) with accurate selection
         function updateShapeOverlay() {
             // Clear overlay
             shapeOverlay.innerHTML = '';
@@ -1367,28 +1587,46 @@
                 const shape = getShapeById(id);
                 if (!shape) return;
                 
+                // Create accurate selection highlight
+                const highlight = document.createElement('div');
+                highlight.className = 'selection-highlight';
+                
+                // Calculate exact bounds for better accuracy
+                let bounds = { x: shape.x, y: shape.y, width: shape.width, height: shape.height };
+                
+                // For freehand shapes, use the actual path bounds
+                if (shape.type === 'freehand' && shape.path && shape.path.length > 0) {
+                    bounds = getPathBounds(shape.path);
+                }
+                
+                highlight.style.left = `${bounds.x - 4}px`;
+                highlight.style.top = `${bounds.y - 4}px`;
+                highlight.style.width = `${bounds.width + 8}px`;
+                highlight.style.height = `${bounds.height + 8}px`;
+                shapeOverlay.appendChild(highlight);
+                
                 // Create bounding box
                 const box = document.createElement('div');
                 box.className = 'shape-bounding-box';
-                box.style.left = `${shape.x}px`;
-                box.style.top = `${shape.y}px`;
-                box.style.width = `${shape.width}px`;
-                box.style.height = `${shape.height}px`;
+                box.style.left = `${bounds.x}px`;
+                box.style.top = `${bounds.y}px`;
+                box.style.width = `${bounds.width}px`;
+                box.style.height = `${bounds.height}px`;
                 shapeOverlay.appendChild(box);
                 
                 // Create resize handles (only for non-freehand shapes)
                 if (shape.type !== 'freehand') {
                     // Top-left handle
-                    createHandle(shape.x, shape.y, 'nwse-resize', shape.id, 'tl');
+                    createHandle(bounds.x, bounds.y, 'nwse-resize', shape.id, 'tl');
                     
                     // Top-right handle
-                    createHandle(shape.x + shape.width, shape.y, 'nesw-resize', shape.id, 'tr');
+                    createHandle(bounds.x + bounds.width, bounds.y, 'nesw-resize', shape.id, 'tr');
                     
                     // Bottom-left handle
-                    createHandle(shape.x, shape.y + shape.height, 'nesw-resize', shape.id, 'bl');
+                    createHandle(bounds.x, bounds.y + bounds.height, 'nesw-resize', shape.id, 'bl');
                     
                     // Bottom-right handle
-                    createHandle(shape.x + shape.width, shape.y + shape.height, 'nwse-resize', shape.id, 'br');
+                    createHandle(bounds.x + bounds.width, bounds.y + bounds.height, 'nwse-resize', shape.id, 'br');
                 }
             });
         }
@@ -1406,21 +1644,41 @@
             shapeOverlay.appendChild(handle);
         }
         
-        // Get shape at position
-        function getShapeAtPosition(x, y) {
+        // Get shape at position with improved accuracy
+        function getShapeAtPosition(x, y, precise = false) {
             // Check shapes in reverse order (top to bottom)
             for (let i = shapes.length - 1; i >= 0; i--) {
                 const shape = shapes[i];
                 
                 if (shape.type === 'freehand') {
                     // For freehand shapes, check if point is near the path
-                    if (isPointNearFreehand(x, y, shape)) {
+                    if (isPointNearFreehand(x, y, shape, precise)) {
+                        return shape.id;
+                    }
+                } else if (shape.type === 'circle' || shape.type === 'ellipse') {
+                    // For circles and ellipses, check if point is inside using mathematical formula
+                    const centerX = shape.x + shape.width / 2;
+                    const centerY = shape.y + shape.height / 2;
+                    const radiusX = shape.width / 2;
+                    const radiusY = shape.height / 2;
+                    
+                    // Ellipse equation: ((x - centerX)^2 / radiusX^2) + ((y - centerY)^2 / radiusY^2) <= 1
+                    const normalizedX = (x - centerX) / radiusX;
+                    const normalizedY = (y - centerY) / radiusY;
+                    
+                    if (normalizedX * normalizedX + normalizedY * normalizedY <= 1) {
+                        return shape.id;
+                    }
+                } else if (shape.type === 'triangle') {
+                    // For triangles, use barycentric coordinates to check if point is inside
+                    if (isPointInTriangle(x, y, shape)) {
                         return shape.id;
                     }
                 } else {
-                    // For regular shapes, check bounding box
-                    if (x >= shape.x && x <= shape.x + shape.width && 
-                        y >= shape.y && y <= shape.y + shape.height) {
+                    // For other shapes, check bounding box with padding for better accuracy
+                    const padding = precise ? shape.brushSize + 5 : 5;
+                    if (x >= shape.x - padding && x <= shape.x + shape.width + padding && 
+                        y >= shape.y - padding && y <= shape.y + shape.height + padding) {
                         return shape.id;
                     }
                 }
@@ -1429,17 +1687,75 @@
             return null;
         }
         
-        // Check if point is near a freehand path
-        function isPointNearFreehand(x, y, shape) {
-            const threshold = shape.brushSize + 5; // pixels
-            for (let i = 0; i < shape.path.length; i++) {
-                const point = shape.path[i];
-                const distance = Math.sqrt((x - point.x) ** 2 + (y - point.y) ** 2);
+        // Check if point is inside a triangle using barycentric coordinates
+        function isPointInTriangle(x, y, shape) {
+            // Triangle vertices
+            const x1 = shape.x + shape.width / 2;
+            const y1 = shape.y;
+            const x2 = shape.x;
+            const y2 = shape.y + shape.height;
+            const x3 = shape.x + shape.width;
+            const y3 = shape.y + shape.height;
+            
+            // Barycentric coordinates
+            const denominator = ((y2 - y3) * (x1 - x3) + (x3 - x2) * (y1 - y3));
+            const a = ((y2 - y3) * (x - x3) + (x3 - x2) * (y - y3)) / denominator;
+            const b = ((y3 - y1) * (x - x3) + (x1 - x3) * (y - y3)) / denominator;
+            const c = 1 - a - b;
+            
+            return a >= 0 && a <= 1 && b >= 0 && b <= 1 && c >= 0 && c <= 1;
+        }
+        
+        // Check if point is near a freehand path with improved accuracy
+        function isPointNearFreehand(x, y, shape, precise = false) {
+            const threshold = precise ? shape.brushSize + 10 : shape.brushSize + 5;
+            
+            // Check each line segment in the path
+            for (let i = 0; i < shape.path.length - 1; i++) {
+                const p1 = shape.path[i];
+                const p2 = shape.path[i + 1];
+                
+                // Calculate distance from point to line segment
+                const distance = pointToLineDistance(x, y, p1.x, p1.y, p2.x, p2.y);
                 if (distance <= threshold) {
                     return true;
                 }
             }
+            
             return false;
+        }
+        
+        // Calculate distance from point to line segment
+        function pointToLineDistance(px, py, x1, y1, x2, y2) {
+            const A = px - x1;
+            const B = py - y1;
+            const C = x2 - x1;
+            const D = y2 - y1;
+            
+            const dot = A * C + B * D;
+            const lenSq = C * C + D * D;
+            let param = -1;
+            
+            if (lenSq !== 0) {
+                param = dot / lenSq;
+            }
+            
+            let xx, yy;
+            
+            if (param < 0) {
+                xx = x1;
+                yy = y1;
+            } else if (param > 1) {
+                xx = x2;
+                yy = y2;
+            } else {
+                xx = x1 + param * C;
+                yy = y1 + param * D;
+            }
+            
+            const dx = px - xx;
+            const dy = py - yy;
+            return Math.sqrt(dx * dx + dy * dy);
         }
         
         // Get shape by ID
